@@ -44,7 +44,7 @@ function CreationDepuisCSV {
     #Importer les utilisateurs à créer   
     $csvFile = $env:CSV_FILE_PATH
     if (-not $env:CSV_FILE_PATH) {
-        Write-Host "La variable d'environnement CSV_FILE_PATH n'est pas définie."
+        Write-ErrorLog -errorMessage "La variable d'environnement CSV_FILE_PATH n'est pas définie."
         return
     }
     $users = Import-Csv  -Path $csvFile -Delimiter '|'
@@ -67,7 +67,7 @@ function CreationDepuisCSV {
     #Racine de mon AD
     $basePath = $env:AD_BASE_PATH
     if (-not $env:AD_BASE_PATH) {
-        Write-Host "La variable d'environnement AD_BASE_PATH n'est pas définie."
+        Write-ErrorLog -errorMessage "La variable d'environnement AD_BASE_PATH n'est pas définie."
         return
     }
 
