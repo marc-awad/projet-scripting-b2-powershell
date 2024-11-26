@@ -48,19 +48,38 @@ foreach ($country in $userPerCountries) {
     }
 }
 
+#Créer un fichier de log 
+#qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
+$logFile = "C:\Logs\user_creation_log.txt"
+
+#Vérifier si le fichier de log existe
+if (-not (Test-Path $logFile)) {
+    "Début du log - $(Get-Date)" | Out-File -FilePath $logFile
+}
+#Fonction pour ajouter les users dans le log
+function Write-UserLog {
+    param (
+        [string]$username,
+        [string]$userid,
+        [string]$distinguishedName
+    )
+    
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Nom: $username, ID: $userid, DistinguishedName: $distinguishedName"
+    $logMessage | Add-Content -Path $logFile
+}
 
 # Créer un second script permettant de peupler automatiquement les bonnes OU avec les bons utilisateurs, le script doit également 
 #Boucle qui parcour tous les utilisateurs
 foreach ($user in $users) {
-    $userid = $user.ID
+    $userid = $user.Name + "." + $user.ID
     $username = $user.Name
     $userposition = $user.Position
     $usercountry = $user.Country
     $OUPath = "OU=$userposition,OU=$usercountry,$basePath"
 
     #Vérifier si l'utilisateur existe déjà
-    if (Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction SilentlyContinue) {
-        Write-Host "L'utilisateur $username existe déjà."
+    if (Get-ADUser -Filter "SamAccountName -eq '$userid'" -ErrorAction SilentlyContinue) {
+        Write-Host "L'utilisateur $userid existe déjà."
         continue #On passe à l'utilisateur suivant
     }
 
@@ -73,15 +92,14 @@ foreach ($user in $users) {
             -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
             -Path $OUPath
 
+        $user = Get-ADUser -SamAccountName $userid
+        Write-UserLog -username $username -userid $userid -distinguishedName $user.DistinguishedName
     }
     catch {
         Write-Host "Erreur lors de la création de l'utilisateur $username : $_"
     }
 
 }
-
-## créer un fichier de log 
-## qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
 
 ## Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
 
