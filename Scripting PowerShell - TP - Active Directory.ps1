@@ -4,7 +4,6 @@ Install-WindowsFeature -Name RSAT-AD-PowerShell
 
 #Importer les utilisateurs à créer   
 $csvFile = "users.csv" 
-Get-Content $csvFile
 $users = Import-Csv  -Path $csvFile -Delimiter '|'
 
 #Analyser les données, le nombre d'utilisateurs, combien par pays, combien occupe tel ou tel poste etc. 
@@ -46,7 +45,7 @@ $logFile = "C:\Logs\user_creation_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logFile)) {
-    "Début du log - $(Get-Date)" | Out-File -FilePath $logErrorFile
+    "Début du log - $(Get-Date)" | Out-File -FilePath $logFile
 }
 #Fonction pour ajouter les users dans le log
 function Write-UserLog {
@@ -72,9 +71,9 @@ foreach ($country in $userPerCountries) {
         $countryOUPath = "OU=$($country.Name),$basePath"
 
         #Si l'OU du pays n'existe pas, on la crée
-        if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $country.Name })) {
+        if (-not (Get-ADOrganizationalUnit -Filter { DistinguishedName -eq $countryOUPath })) {
             New-ADOrganizationalUnit -Name $country.Name -Path $basePath
-        }
+        }        
 
         foreach ($position in $userPerPosition) {
             #Chemin de l'OU du poste
