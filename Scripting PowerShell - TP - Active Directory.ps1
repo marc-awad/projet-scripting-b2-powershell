@@ -7,7 +7,7 @@ $logErrorFile = "C:\Logs\error_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logErrorFile)) {
-    "Début du log - $(Get-Date)" | Out-File -FilePath $logErrorFile
+    "Début du log d'erreur - $(Get-Date)" | Out-File -FilePath $logErrorFile
 }
 
 #Fonction pour ajouter les erreurs dans le log
@@ -20,13 +20,12 @@ function Write-ErrorLog {
     $logMessage | Add-Content -Path $logErrorFile
 }
 
-#Créer un fichier de log pour les utilisateurs créés
-#qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
+#Créer un fichier de log pour les utilisateurs créés qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
 $logFile = "C:\Logs\user_creation_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logFile)) {
-    "Début du log - $(Get-Date)" | Out-File -FilePath $logFile
+    "Début du log de gestion d'utilisateur - $(Get-Date)" | Out-File -FilePath $logFile
 }
 #Fonction pour ajouter les users dans le log
 function Write-UserLog {
@@ -103,21 +102,26 @@ function CreationDepuisCSV {
 
         #Vérifier si l'utilisateur existe déjà
         if (Get-ADUser -Filter "SamAccountName -eq '$userid'" -ErrorAction SilentlyContinue) {
-            Write-Host "L'utilisateur $userid existe déjà."
             continue #On passe à l'utilisateur suivant
         }
 
         try {
-            New-ADUser -Name "$username" `
-                -SamAccountName $userid `
-                -Surname "" `
-                -UserPrincipalName "$username@scripting.com" `
-                -Enabled $true `
-                -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
-                -Path $OUPath
+            if (Get-ADOrganizationalUnit -Filter { DistinguishedName -eq $OUPath }) {
+                New-ADUser -Name "$username" `
+                    -SamAccountName $userid `
+                    -Surname "" `
+                    -UserPrincipalName "$username@scripting.com" `
+                    -Enabled $true `
+                    -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
+                    -Path $OUPath
+                    -ChangePasswordAtLogon $true
 
-            $user = Get-ADUser -SamAccountName $userid
-            write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+                    $user = Get-ADUser -SamAccountName $userid
+                    write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+
+            } else {
+                Write-ErrorLog -errorMessage "L'OU $OUPath n'existe pas pour l'utilisateur $username."
+            }
         }
         catch {
             Write-ErrorLog -errorMessage "Erreur lors de la création de l'utilisateur $username : $_"
@@ -133,9 +137,13 @@ function DesactiverUtilisateur {
     $samAccountName = Read-Host "Entrez le SamAccountName de l'utilisateur à désactiver"
     try {
         $user = Get-ADUser -Filter { SamAccountName -eq $samAccountName }
-        Disable-ADAccount -Identity $user.SamAccountName
-        Write-UserLog -message "Utilisateur désactivé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
-    } 
+        if($user){
+            Disable-ADAccount -Identity $user.SamAccountName
+            Write-UserLog -message "Utilisateur désactivé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+        } else {
+            Write-ErrorLog -errorMessage "L'utilisateur $samAccountName n'existe pas"
+        }
+       
     catch {
         Write-ErrorLog -errorMessage "Erreur lors de la désactivation de l'utilisateur $samAccountName : $_"
     }
@@ -159,7 +167,7 @@ function SupprimerUtilisateur {
 
 #Bonus 3 : Transformer le rendu du TP en un outil simple à utiliser par un utilisateur lambda
 do {
-    Write-Host "1. Créer les utilisateurs depuis un fichier csv"
+    Write-Host "1. Créer les utilisateurs depuis le fichier csv"
     Write-Host "2. Désactiver un utilisateur"
     Write-Host "3. Supprimer les utilisateurs désactivés depuis plus de 90 jours"
     Write-Host "4. Consulter le fichier de gestion des utilisateurs"
