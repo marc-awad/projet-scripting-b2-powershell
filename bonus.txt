@@ -1,2 +1,0 @@
-Bonus
-3. transformer le rendu du TP en un outil simple à utiliser par un utilisateur lambda
