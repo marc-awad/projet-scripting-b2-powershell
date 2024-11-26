@@ -21,40 +21,32 @@ $userPerPosition | ForEach-Object {
     Write-Host "Poste: $($_.Name), Nombre: $($_.Count)"
 }
 
+# Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
+# Créer un fichier de log pour les erreurs
+$logErrorFile = "C:\Logs\error_log.txt"
 
-#Créer un script qui permet de créer l'arborescence comme tel : une OU pour chaque pays et dans chaque pays créer une OU par poste
-#Racine de mon AD
-$basePath = "DC=scripting,DC=local" 
-
-#Boucle foreach qui parcour tous les pays
-foreach ($country in $userPerCountries) {
-
-    #Chemin de l'OU du pays
-    $countryOUPath = "OU=$($country.Name),$basePath"
-
-    #Si l'OU du pays n'existe pas, on la crée
-    if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $country.Name })) {
-        New-ADOrganizationalUnit -Name $country.Name -Path $basePath
-    }
-
-    foreach ($position in $userPerPosition) {
-        #Chemin de l'OU du poste
-        $positionOUPath = "OU=$($position.Name),$countryOUPath"
-
-        #Si l'OU du poste n'existe pas, on la crée
-        if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $position.Name })) {
-            New-ADOrganizationalUnit -Name $position.Name -Path $positionOUPath
-        }
-    }
+#Vérifier si le fichier de log existe
+if (-not (Test-Path $logErrorFile)) {
+    "Début du log - $(Get-Date)" | Out-File -FilePath $logErrorFile
 }
 
-#Créer un fichier de log 
+#Fonction pour ajouter les erreurs dans le log
+function Write-ErrorLog {
+    param (
+        [string]$errorMessage
+    )
+    
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage"
+    $logMessage | Add-Content -Path $logErrorFile
+}
+
+#Créer un fichier de log pour les utilisateurs créés
 #qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
 $logFile = "C:\Logs\user_creation_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logFile)) {
-    "Début du log - $(Get-Date)" | Out-File -FilePath $logFile
+    "Début du log - $(Get-Date)" | Out-File -FilePath $logErrorFile
 }
 #Fonction pour ajouter les users dans le log
 function Write-UserLog {
@@ -67,6 +59,41 @@ function Write-UserLog {
     $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Nom: $username, ID: $userid, DistinguishedName: $distinguishedName"
     $logMessage | Add-Content -Path $logFile
 }
+
+
+#Créer un script qui permet de créer l'arborescence comme tel : une OU pour chaque pays et dans chaque pays créer une OU par poste
+#Racine de mon AD
+$basePath = "DC=scripting,DC=local" 
+
+#Boucle foreach qui parcour tous les pays
+foreach ($country in $userPerCountries) {
+    try {
+        #Chemin de l'OU du pays
+        $countryOUPath = "OU=$($country.Name),$basePath"
+
+        #Si l'OU du pays n'existe pas, on la crée
+        if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $country.Name })) {
+            New-ADOrganizationalUnit -Name $country.Name -Path $basePath
+        }
+
+        foreach ($position in $userPerPosition) {
+            #Chemin de l'OU du poste
+            $positionOUPath = "OU=$($position.Name),$countryOUPath"
+
+            #Si l'OU du poste n'existe pas, on la crée
+            if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $position.Name })) {
+                New-ADOrganizationalUnit -Name $position.Name -Path $positionOUPath
+            }
+        }
+    }
+    catch {
+        Write-ErrorLog -errorMessage "Erreur lors de la création de l'OU pour le pays $($country.Name) : $_"
+    }
+
+
+}
+
+
 
 # Créer un second script permettant de peupler automatiquement les bonnes OU avec les bons utilisateurs, le script doit également 
 #Boucle qui parcour tous les utilisateurs
@@ -96,20 +123,14 @@ foreach ($user in $users) {
         Write-UserLog -username $username -userid $userid -distinguishedName $user.DistinguishedName
     }
     catch {
-        Write-Host "Erreur lors de la création de l'utilisateur $username : $_"
+        Write-ErrorLog -errorMessage "Erreur lors de la création de l'utilisateur $username : $_"
     }
 
 }
 
-## Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
 
 
 $OUroot = New-ADOrganizationalUnit -Name test -ProtectedFromAccidentalDeletion $false -ErrorAction Stop
 
 ## lister les ou de ton dossier 
 Get-ADOrganizationalUnit -filter * | Where-Object { $_.distinguishedName -like "*OU=j.jebane,OU=TP,DC=ps,DC=domain*" }
-
-## bonus
-## Créer une fonction pour désactiver des utilisateurs
-## Créer une fonction pour supprimer les utilisateurs désactivés depuis plus de 90 jours
-## transformer le rendu du TP en un outil simple à utiliser par un utilisateur lambda
