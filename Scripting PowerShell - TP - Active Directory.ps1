@@ -27,22 +27,22 @@ $userPerPosition | ForEach-Object {
 $basePath = "DC=scripting,DC=local" 
 
 #Boucle foreach qui parcour tous les pays
-foreach($country in $userPerCountries) {
+foreach ($country in $userPerCountries) {
 
     #Chemin de l'OU du pays
     $countryOUPath = "OU=$($country.Name),$basePath"
 
     #Si l'OU du pays n'existe pas, on la crée
-    if(-not (Get-ADOrganizationalUnit -Filter {Name -eq $country.Name})) {
+    if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $country.Name })) {
         New-ADOrganizationalUnit -Name $country.Name -Path $basePath
     }
 
-    foreach($position in $userPerPosition) {
+    foreach ($position in $userPerPosition) {
         #Chemin de l'OU du poste
         $positionOUPath = "OU=$($position.Name),$countryOUPath"
 
         #Si l'OU du poste n'existe pas, on la crée
-        if(-not (Get-ADOrganizationalUnit -Filter {Name -eq $position.Name})) {
+        if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $position.Name })) {
             New-ADOrganizationalUnit -Name $position.Name -Path $positionOUPath
         }
     }
@@ -56,9 +56,28 @@ foreach ($user in $users) {
     $username = $user.Name
     $userposition = $user.Position
     $usercountry = $user.Country
-    $OUPath =  "OU=$userposition,OU=$usercountry,$basePath"
+    $OUPath = "OU=$userposition,OU=$usercountry,$basePath"
 
-    if()
+    #Vérifier si l'utilisateur existe déjà
+    if (Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction SilentlyContinue) {
+        Write-Host "L'utilisateur $username existe déjà."
+        continue #On passe à l'utilisateur suivant
+    }
+
+    try {
+        New-ADUser -Name "$username" `
+            -SamAccountName $userid `
+            -Surname "" `
+            -UserPrincipalName "$username@scripting.com" `
+            -Enabled $true `
+            -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
+            -Path $OUPath
+
+    }
+    catch {
+        Write-Host "Erreur lors de la création de l'utilisateur $username : $_"
+    }
+
 }
 
 ## créer un fichier de log 
@@ -66,12 +85,11 @@ foreach ($user in $users) {
 
 ## Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
 
-## Commenter de façon claire le script
 
 $OUroot = New-ADOrganizationalUnit -Name test -ProtectedFromAccidentalDeletion $false -ErrorAction Stop
 
 ## lister les ou de ton dossier 
-Get-ADOrganizationalUnit -filter * | Where-Object {$_.distinguishedName -like "*OU=j.jebane,OU=TP,DC=ps,DC=domain*"}
+Get-ADOrganizationalUnit -filter * | Where-Object { $_.distinguishedName -like "*OU=j.jebane,OU=TP,DC=ps,DC=domain*" }
 
 ## bonus
 ## Créer une fonction pour désactiver des utilisateurs
