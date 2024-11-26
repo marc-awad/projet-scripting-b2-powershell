@@ -50,12 +50,13 @@ if (-not (Test-Path $logFile)) {
 #Fonction pour ajouter les users dans le log
 function Write-UserLog {
     param (
+        [string]$message,
         [string]$username,
         [string]$userid,
         [string]$distinguishedName
     )
     
-    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Nom: $username, ID: $userid, DistinguishedName: $distinguishedName"
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $message Nom: $username, ID: $userid, DistinguishedName: $distinguishedName"
     $logMessage | Add-Content -Path $logFile
 }
 
@@ -119,10 +120,40 @@ foreach ($user in $users) {
             -Path $OUPath
 
         $user = Get-ADUser -SamAccountName $userid
-        Write-UserLog -username $username -userid $userid -distinguishedName $user.DistinguishedName
+        write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
     }
     catch {
         Write-ErrorLog -errorMessage "Erreur lors de la création de l'utilisateur $username : $_"
     }
 
 }
+
+#Bonus 1 : Créer un script qui permet de désactiver un utilisateur
+function DesactiverUtilisateur {
+    $samAccountName = Read-Host "Entrez le SamAccountName de l'utilisateur à désactiver"
+    try {
+        $user = Get-ADUser -Filter { SamAccountName -eq $samAccountName }
+        Disable-ADAccount -Identity $user.SamAccountName
+        Write-UserLog -message "Utilisateur désactivé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+    } 
+    catch {
+        Write-ErrorLog -errorMessage "Erreur lors de la désactivation de l'utilisateur $samAccountName : $_"
+    }
+}
+
+#Bonus 2 : Créer un script qui permet de supprimer un utilisateur qui sont désactivés depuis plus de 90 jours
+function SupprimerUtilisateur {
+    $date = (Get-Date).AddDays(-90)
+    $usersToDelete = Get-ADUser -Filter { Enabled -eq $false -and whenChanged -lt $date } -Properties whenChanged
+
+    foreach ($user in $usersToDelete) {
+        try {
+            Remove-ADUser -Identity $user.SamAccountName -Confirm:$false
+            Write-UserLog -message "Utilisateur supprimé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+        }
+        catch {
+            Write-ErrorLog -errorMessage "Erreur lors de la suppression de l'utilisateur $($user.SamAccountName) : $_"
+        }
+    }
+}
+

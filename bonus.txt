@@ -1,4 +1,2 @@
 Bonus
-1. Créer une fonction pour désactiver des utilisateurs
-2. Créer une fonction pour supprimer les utilisateurs désactivés depuis plus de 90 jours
 3. transformer le rendu du TP en un outil simple à utiliser par un utilisateur lambda
