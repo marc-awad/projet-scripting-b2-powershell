@@ -16,7 +16,7 @@ function Write-ErrorLog {
         [string]$errorMessage
     )
     
-    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage"
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $    errorMessage"
     $logMessage | Add-Content -Path $logErrorFile
 }
 
@@ -42,7 +42,11 @@ function Write-UserLog {
 
 function CreationDepuisCSV {
     #Importer les utilisateurs à créer   
-    $csvFile = Read-Host "Entrez le chemin du fichier csv"
+    $csvFile = $env:CSV_FILE_PATH
+    if (-not $env:CSV_FILE_PATH) {
+        Write-Host "La variable d'environnement CSV_FILE_PATH n'est pas définie."
+        return
+    }
     $users = Import-Csv  -Path $csvFile -Delimiter '|'
 
     #Analyser les données, le nombre d'utilisateurs, combien par pays, combien occupe tel ou tel poste etc. 
@@ -61,7 +65,11 @@ function CreationDepuisCSV {
 
     #Créer un script qui permet de créer l'arborescence comme tel : une OU pour chaque pays et dans chaque pays créer une OU par poste
     #Racine de mon AD
-    $basePath = "DC=scripting,DC=local" 
+    $basePath = $env:AD_BASE_PATH
+    if (-not $env:AD_BASE_PATH) {
+        Write-Host "La variable d'environnement AD_BASE_PATH n'est pas définie."
+        return
+    }
 
     #Boucle foreach qui parcour tous les pays
     foreach ($country in $userPerCountries) {
@@ -114,12 +122,13 @@ function CreationDepuisCSV {
                     -Enabled $true `
                     -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
                     -Path $OUPath
-                    -ChangePasswordAtLogon $true
+                -ChangePasswordAtLogon $true
 
-                    $user = Get-ADUser -SamAccountName $userid
-                    write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
+                $user = Get-ADUser -SamAccountName $userid
+                write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
 
-            } else {
+            }
+            else {
                 Write-ErrorLog -errorMessage "L'OU $OUPath n'existe pas pour l'utilisateur $username."
             }
         }
@@ -134,21 +143,23 @@ function CreationDepuisCSV {
 
 #Bonus 1 : Créer un script qui permet de désactiver un utilisateur
 function DesactiverUtilisateur {
-    $samAccountName = Read-Host "Entrez le SamAccountName de l'utilisateur à désactiver"
+    param(
+        [string]$samAccountName
+    )
     try {
         $user = Get-ADUser -Filter { SamAccountName -eq $samAccountName }
-        if($user){
+        if ($user) {
             Disable-ADAccount -Identity $user.SamAccountName
             Write-UserLog -message "Utilisateur désactivé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
-        } else {
+        }
+        else {
             Write-ErrorLog -errorMessage "L'utilisateur $samAccountName n'existe pas"
         }
-       
+    }
     catch {
         Write-ErrorLog -errorMessage "Erreur lors de la désactivation de l'utilisateur $samAccountName : $_"
     }
 }
-
 #Bonus 2 : Créer un script qui permet de supprimer un utilisateur qui sont désactivés depuis plus de 90 jours
 function SupprimerUtilisateur {
     $date = (Get-Date).AddDays(-90)
@@ -177,7 +188,10 @@ do {
 
     switch ($choice) {
         1 { CreationDepuisCSV }
-        2 { DesactiverUtilisateur }
+        2 {
+            $samAccountName = Read-Host "Entrez le nom de l'utilisateur à désactiver"
+            DesactiverUtilisateur -samAccountName $samAccountName
+        }
         3 { SupprimerUtilisateur }
         4 { Get-Content $logFile }
         5 { Get-Content $logErrorFile }
