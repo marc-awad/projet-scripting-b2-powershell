@@ -3,9 +3,9 @@ Install-WindowsFeature -Name RSAT-AD-PowerShell
 
 
 #Importer les utilisateurs à créer   
-$csvFile = "C:\Users\MarcAWAD\Downloads\users.csv"
-$users = Import-Csv -Path $csvFile -Delimiter '|'
-Write-Host("Importation réussite.")
+$csvFile = "users.csv" 
+Get-Content $csvFile
+$users = Import-Csv  -Path $csvFile -Delimiter '|'
 
 #Analyser les données, le nombre d'utilisateurs, combien par pays, combien occupe tel ou tel poste etc. 
 $totalUser = $users.Count
@@ -15,10 +15,10 @@ $userPerPosition = $users | Group-Object Position | Sort-Object Count -Descendin
 #Affichage des résultats
 Write-Host "Nombre total d'utilisateurs : $totalUser"
 $userPerCountries | ForEach-Object { 
-    Write-Host "Pays: $($_.Name), Nombre d'utilisateurs: $($_.Count)" 
+    Write-Host "Pays : $($_.Name) --> Nombre d'utilisateurs : $($_.Count)" 
 }
 $userPerPosition | ForEach-Object {
-    Write-Host "Poste: $($_.Name), Nombre: $($_.Count)"
+    Write-Host "Poste : $($_.Name) --> Nombre : $($_.Count)"
 }
 
 # Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
@@ -127,10 +127,3 @@ foreach ($user in $users) {
     }
 
 }
-
-
-
-$OUroot = New-ADOrganizationalUnit -Name test -ProtectedFromAccidentalDeletion $false -ErrorAction Stop
-
-## lister les ou de ton dossier 
-Get-ADOrganizationalUnit -filter * | Where-Object { $_.distinguishedName -like "*OU=j.jebane,OU=TP,DC=ps,DC=domain*" }
