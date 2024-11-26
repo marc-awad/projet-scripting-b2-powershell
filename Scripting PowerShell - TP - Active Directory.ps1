@@ -3,7 +3,7 @@ Install-WindowsFeature -Name RSAT-AD-PowerShell
 
 # Le script doit intégrer une gestion d'erreur et une historisation de celle-ci dans un fichier dédié 
 # Créer un fichier de log pour les erreurs
-$logErrorFile = "C:\Logs\error_log.txt"
+$logErrorFile = "C:\PerfLogs\error_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logErrorFile)) {
@@ -16,12 +16,12 @@ function Write-ErrorLog {
         [string]$errorMessage
     )
     
-    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $    errorMessage"
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $errorMessage"
     $logMessage | Add-Content -Path $logErrorFile
 }
 
 #Créer un fichier de log pour les utilisateurs créés qui contient pour chaque utilisateur, son nom et son id, le distingueshName et la date de la création
-$logFile = "C:\Logs\user_creation_log.txt"
+$logFile = "C:\PerfLogs\user_creation_log.txt"
 
 #Vérifier si le fichier de log existe
 if (-not (Test-Path $logFile)) {
@@ -41,7 +41,8 @@ function Write-UserLog {
 }
 
 function CreationDepuisCSV {
-    #Importer les utilisateurs à créer   
+
+    # Importer les utilisateurs à créer   
     $csvFile = $env:CSV_FILE_PATH
     if (-not $env:CSV_FILE_PATH) {
         Write-ErrorLog -errorMessage "La variable d'environnement CSV_FILE_PATH n'est pas définie."
@@ -49,12 +50,12 @@ function CreationDepuisCSV {
     }
     $users = Import-Csv  -Path $csvFile -Delimiter '|'
 
-    #Analyser les données, le nombre d'utilisateurs, combien par pays, combien occupe tel ou tel poste etc. 
+    # Analyser les données
     $totalUser = $users.Count
     $userPerCountries = $users | Group-Object Country | Sort-Object Count -Descending
     $userPerPosition = $users | Group-Object Position | Sort-Object Count -Descending
 
-    #Affichage des résultats
+    # Affichage des résultats
     Write-Host "Nombre total d'utilisateurs : $totalUser"
     $userPerCountries | ForEach-Object { 
         Write-Host "Pays : $($_.Name) --> Nombre d'utilisateurs : $($_.Count)" 
@@ -63,70 +64,67 @@ function CreationDepuisCSV {
         Write-Host "Poste : $($_.Name) --> Nombre : $($_.Count)"
     }
 
-    #Créer un script qui permet de créer l'arborescence comme tel : une OU pour chaque pays et dans chaque pays créer une OU par poste
-    #Racine de mon AD
-    $basePath = $env:AD_BASE_PATH
-    if (-not $env:AD_BASE_PATH) {
-        Write-ErrorLog -errorMessage "La variable d'environnement AD_BASE_PATH n'est pas définie."
-        return
+    # Créer l'OU racine si elle n'existe pas déjà
+    # Créer l'OU racine si elle n'existe pas déjà
+    $OUroot = Get-ADOrganizationalUnit -Filter { Name -eq "ScriptingLocal" } -ErrorAction SilentlyContinue
+    if (-not $OUroot) {
+        $OUroot = New-ADOrganizationalUnit -Name "ScriptingLocal" -ProtectedFromAccidentalDeletion $false -Path "DC=example,DC=com" -ErrorAction Stop
     }
 
-    #Boucle foreach qui parcour tous les pays
+
+    # Boucle pour créer les OUs pour les pays et les postes
     foreach ($country in $userPerCountries) {
         try {
-            #Chemin de l'OU du pays
-            $countryOUPath = "OU=$($country.Name),$basePath"
+            $countryOUPath = "OU=$($country.Name),$OUroot"
 
-            #Si l'OU du pays n'existe pas, on la crée
+            # Créer l'OU du pays si elle n'existe pas
             if (-not (Get-ADOrganizationalUnit -Filter { DistinguishedName -eq $countryOUPath })) {
-                New-ADOrganizationalUnit -Name $country.Name -Path $basePath
-            }        
+                New-ADOrganizationalUnit -Name $country.Name -ProtectedFromAccidentalDeletion $false -Path $OUroot
+            }
 
             foreach ($position in $userPerPosition) {
-                #Chemin de l'OU du poste
                 $positionOUPath = "OU=$($position.Name),$countryOUPath"
-
-                #Si l'OU du poste n'existe pas, on la crée
-                if (-not (Get-ADOrganizationalUnit -Filter { Name -eq $position.Name })) {
-                    New-ADOrganizationalUnit -Name $position.Name -Path $positionOUPath
+                # Créer l'OU du poste si elle n'existe pas
+                if (-not (Get-ADOrganizationalUnit -Filter { DistinguishedName -eq $positionOUPath })) {
+                    New-ADOrganizationalUnit -Name $position.Name -ProtectedFromAccidentalDeletion $false -Path $countryOUPath
                 }
             }
         }
         catch {
             Write-ErrorLog -errorMessage "Erreur lors de la création de l'OU pour le pays $($country.Name) : $_"
         }
-
-
     }
 
-    # Créer un second script permettant de peupler automatiquement les bonnes OU avec les bons utilisateurs, le script doit également 
-    #Boucle qui parcour tous les utilisateurs
+
+    # Boucle pour créer les utilisateurs
     foreach ($user in $users) {
-        $userid = $user.Name + "." + $user.ID
+        $userid = "$($user.Name).$($user.ID)"
         $username = $user.Name
         $userposition = $user.Position
         $usercountry = $user.Country
-        $OUPath = "OU=$userposition,OU=$usercountry,$basePath"
+        $OUPath = "OU=$userposition,OU=$usercountry,$OUroot"
 
-        #Vérifier si l'utilisateur existe déjà
-        if (Get-ADUser -Filter "SamAccountName -eq '$userid'" -ErrorAction SilentlyContinue) {
-            continue #On passe à l'utilisateur suivant
+        # Vérifier si l'utilisateur existe déjà
+        $escapedUserId = $userid -replace "'", "''"
+        if (Get-ADUser -Filter "SamAccountName -eq '$escapedUserId'" -ErrorAction SilentlyContinue) {
+            continue # On passe à l'utilisateur suivant
         }
 
         try {
             if (Get-ADOrganizationalUnit -Filter { DistinguishedName -eq $OUPath }) {
-                New-ADUser -Name "$username" `
+                # Créer l'utilisateur
+                $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
+                New-ADUser -Name $username `
                     -SamAccountName $userid `
                     -Surname "" `
                     -UserPrincipalName "$username@scripting.com" `
                     -Enabled $true `
-                    -AccountPassword (ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force) `
-                    -Path $OUPath
-                -ChangePasswordAtLogon $true
+                    -AccountPassword $password `
+                    -Path $OUPath `
+                    -ChangePasswordAtLogon $true
 
-                $user = Get-ADUser -SamAccountName $userid
-                write-UserLog -message "Utilisateur créé" -username $user.Name -userid $user.SamAccountName -distinguishedName $user.DistinguishedName
-
+                $userCreated = Get-ADUser -SamAccountName $userid
+                Write-UserLog -message "Utilisateur créé" -username $userCreated.Name -userid $userCreated.SamAccountName -distinguishedName $userCreated.DistinguishedName
             }
             else {
                 Write-ErrorLog -errorMessage "L'OU $OUPath n'existe pas pour l'utilisateur $username."
@@ -135,9 +133,7 @@ function CreationDepuisCSV {
         catch {
             Write-ErrorLog -errorMessage "Erreur lors de la création de l'utilisateur $username : $_"
         }
-
     }
-
 }
 
 
